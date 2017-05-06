@@ -39,7 +39,24 @@ module Lubi
         system("wget", "-O", localFilePath, download_url)
       end
 
-    end
+      def netRm(keyName, bucketName)
+        Qiniu::delete(bucketName, keyName)
+      end
 
+      def netRename(oldKeyName, newKeyName, bucketName)
+        Qiniu::move(bucketName, oldKeyName, bucketName, newKeyName)
+      end
+
+      def netList(bucketName)
+        items = []
+        code, resp, headers, has_more, list_policy = nil, nil, nil, true, Qiniu::Storage::ListPolicy.new(bucketName)
+        while has_more do
+          code, resp, headers, has_more, list_policy = Qiniu::Storage.list(list_policy)
+          items += resp["items"] if resp.has_key? "items"
+        end
+        items
+      end
+
+    end
   end
 end
