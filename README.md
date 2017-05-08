@@ -1,2 +1,2 @@
 # lubi 
-#### coming soon
+coming soon
