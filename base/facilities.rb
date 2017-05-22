@@ -1,5 +1,10 @@
 #coding=utf-8
 require 'qiniu'
+require 'digest'
+require 'base64'
+require 'find'
+
+BLOCK_SIZE = 2 ** 22
 
 module Lubi
   module Facilities
@@ -7,6 +12,41 @@ module Lubi
       def initialize key
         super("require arg \"#{key}\" was not found!")
       end
+    end
+
+    class LubiFile
+        class << self
+            def qetag(file_name)
+                sha1 = []
+                open(file_name, "rb") do |f|
+                    until f.eof?
+                      chunk = f.read(BLOCK_SIZE)
+                      sha1 << Digest::SHA1.digest(chunk)
+                    end
+                end
+                if sha1.size == 1
+                    Base64.urlsafe_encode64(0x16.chr + sha1[0])
+                else
+                    Base64.urlsafe_encode64(0x96.chr + Digest::SHA1.digest(sha1.join))
+                end
+            end
+
+            def list(dir)
+                localHash = {}
+                Find.find(dir) do |f|
+                    if File.file? f
+                        localFile = {}
+                        localFile["name"] = f
+                        f.start_with? "./" ? localFile["key"] = f[2..-1]
+                        : localFile["key"] = f
+                        localFile["hash"] = Lubi::Facilities::LubiFile.qetag(File.absolute_path(f))
+                        localFile["using"] = false
+                        localHash[localFile["hash"]] = localFile
+                    end
+                end
+                localHash
+            end
+        end
     end
 
     class Connection
@@ -54,7 +94,11 @@ module Lubi
           code, resp, headers, has_more, list_policy = Qiniu::Storage.list(list_policy)
           items += resp["items"] if resp.has_key? "items"
         end
-        items
+        itemsHash = {}
+        items.each do |item|
+            itemsHash[item["hash"]] = item
+        end
+        itemsHash
       end
 
     end
