@@ -3,7 +3,9 @@ require 'yaml'
 
 module Lubi
     class Config
+        #配置文件存放路径  /home/$user/.lubi.conf
         @@conf_dir = File::join(ENV["HOME"], ".lubi.conf")
+        #dir为本地同步盘目录
         @ak, @sk, @bucket, @dir = nil, nil, nil, nil
         class << self
             attr_reader :ak, :sk, :bucket, :dir
