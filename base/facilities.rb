@@ -40,7 +40,6 @@ module Lubi
                         f.start_with? "./" ? localFile["key"] = f[2..-1]
                         : localFile["key"] = f
                         localFile["hash"] = Lubi::Facilities::LubiFile.qetag(File.absolute_path(f))
-                        localFile["using"] = false
                         localHash[localFile["hash"]] = localFile
                     end
                 end
