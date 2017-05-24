@@ -5,7 +5,6 @@ require './base/facilities'
 
 include FileUtils
 
-
 #main
 Lubi::Config.config
 unless File.exists? Lubi::Config.dir
@@ -18,28 +17,44 @@ cd Lubi::Config.dir
 conn = Lubi::Facilities::Connection.new
 conn.establish(ak:Lubi::Config.ak,sk:Lubi::Config.sk)
 
-uploading_files = {}
+$uploading_files = {}
+
+def beforeUploaded(files)
+    #为所有待上传文件打标！
+    files.each do |file|
+        etag = Lubi::Facilities::LubiFile.qetag file
+        $uploading_files[etag] = "using"
+    end
+end
+
+def afterUploaded(files)
+    #上传完毕，去掉标记！
+    files.each do |file|
+        etag = Lubi::Facilities::LubiFile.qetag file
+        $uploading_files.delete(etag) if $uploading_files[etag]
+    end
+end
 
 listener = Listen.to(".") do |m, a, r|
     #修改文件对应的操作是服务端删除文件再上传
     unless m.empty?
-        m.each do |f|
-            #绝对路径，需要去掉当前路径（同步盘路径）
-            #比如f为 /home/rowland/qiniu/doc/ok.txt
-            #则去掉同步盘路径之后得到 /doc/ok.txt
-            #此时还需额外去掉开头那个"/"
-            key = f.sub(pwd, "")[1..-1]
-            #删除服务器文件
-            conn.netRm(key, Lubi::Config.bucket)
-            #上传本地新文件
-            etag = Lubi::Facilities::LubiFile.qetag(f)
-            begin
-                uploading_files[etag] = "using"
+        begin
+            toBeUploaded m
+            m.each do |f|
+                #绝对路径，需要去掉当前路径（同步盘路径）
+                #比如f为 /home/rowland/qiniu/doc/ok.txt
+                #则去掉同步盘路径之后得到 /doc/ok.txt
+                #此时还需额外去掉开头那个"/"
+                key = f.sub(pwd, "")[1..-1]
+                #删除服务器文件
+                conn.netRm(key, Lubi::Config.bucket)
+                #上传本地新文件
+                etag = Lubi::Facilities::LubiFile.qetag(f)
                 conn.upload(f, key, Lubi::Config.bucket)
                 puts "#{key} modified!"
-            ensure
-                uploading_files.delete etag
             end
+        ensure
+            afterUploaded m
         end
     end
     #删除文件对应服务器删除
@@ -55,16 +70,16 @@ listener = Listen.to(".") do |m, a, r|
     #新增文件的操作对应服务端直接上传
     #但是判断新增文件的时候需要判断remove是空
     if r.empty? && !a.empty?
-        a.each do |f|
-            key = f.sub(pwd, "")[1..-1]
-            etag = Lubi::Facilities::LubiFile.qetag(f)
-            begin
-                uploading_files[etag] = "using"
+        begin
+            beforeUploaded a
+            a.each do |f|
+                key = f.sub(pwd, "")[1..-1]
+                etag = Lubi::Facilities::LubiFile.qetag(f)
                 conn.upload(f, key, Lubi::Config.bucket)
                 puts "#{key} added!"
-            ensure
-                uploading_files.delete etag
             end
+        ensure
+            afterUploaded a
         end
     end
     #重命名文件的操作，对应服务端改名
@@ -106,7 +121,7 @@ loop {
     #实现步骤5
     local_files.each_pair do |etag, f|
         unless remote_files[etag]
-            unless uploading_files[etag]
+            unless $uploading_files[etag]
                 puts "#{f["key"]} needs to be deleted!"
                 rm f["key"]
             end
@@ -126,5 +141,5 @@ loop {
             end
         end
     end
-    sleep 30 #轮询时间 30秒
+    sleep 2 #轮询时间 30秒
 }
