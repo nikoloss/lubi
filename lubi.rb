@@ -39,7 +39,7 @@ listener = Listen.to(".") do |m, a, r|
     #修改文件对应的操作是服务端删除文件再上传
     unless m.empty?
         begin
-            toBeUploaded m
+            beforeUploaded m
             m.each do |f|
                 #绝对路径，需要去掉当前路径（同步盘路径）
                 #比如f为 /home/rowland/qiniu/doc/ok.txt
