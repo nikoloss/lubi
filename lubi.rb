@@ -141,5 +141,5 @@ loop {
             end
         end
     end
-    sleep 30 #轮询时间 30秒
+    sleep 10 #轮询时间
 }
