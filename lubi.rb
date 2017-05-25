@@ -136,8 +136,8 @@ loop {
                 if remote_files[etag]["key"].index("/")
                     #需要创建目录
                     dirpath = remote_files[etag]["key"][0..remote_files[etag]["key"].rindex("/")]
-                    puts "need create a directory=>#{dirpath}!"
                     unless File.directory? dirpath
+                        puts "need create a directory=>#{dirpath}!"
                         mkdir_p dirpath
                     end
                 end
