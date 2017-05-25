@@ -119,6 +119,8 @@ loop {
         end
     end
     #实现步骤5
+    #由于步骤4下载了新文件，所以local_files需要更新一次以捕获刚刚下载的文件
+    local_files = Lubi::Facilities::LubiFile.list "."
     local_files.each_pair do |etag, f|
         unless remote_files[etag]
             unless $uploading_files[etag]
