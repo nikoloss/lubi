@@ -116,6 +116,7 @@ loop {
             #下载之前让listener忽略该文件以免被捕获导致重新上传
             listener.ignore! Regexp.new(Regexp.escape(f["key"]))
             conn.download(f["key"], f["key"], Lubi::Config.bucket)
+            sleep 1
             listener.ignore! nil
             puts "#{f["key"]} downloaded!!!"
         end
@@ -144,6 +145,7 @@ loop {
                 listener.ignore! [Regexp.new(Regexp.escape(f["key"])),
                 Regexp.new(Regexpe.escape(remote_files[etag]["key"]))]
                 mv(f["key"], remote_files[etag]["key"])
+                sleep 1
                 listener.ignore! nil
                 puts "#{f["key"]} rename to #{remote_files[etag]["key"]}"
             end
