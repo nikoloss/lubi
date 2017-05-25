@@ -113,8 +113,11 @@ loop {
                     mkdir_p dirpath
                 end
             end
-            #downloading!
+            #下载之前让listener忽略该文件以免被捕获导致重新上传
+            listener.ignore! Regexp.new(f["key"])
             conn.download(f["key"], f["key"], Lubi::Config.bucket)
+            sleep 1
+            listener.ignore! nil
             puts "#{f["key"]} downloaded!!!"
         end
     end
@@ -130,7 +133,6 @@ loop {
         else
             unless f["key"] == remote_files[etag]["key"]
                 #进入改名步骤
-                puts "#{f["key"]} rename to #{remote_files[etag]["key"]}"
                 if remote_files[etag]["key"].index("/")
                     #需要创建目录
                     dirpath = remote_files[etag]["key"][0..remote_files[etag]["key"].rindex("/")]
@@ -139,7 +141,12 @@ loop {
                         mkdir_p dirpath
                     end
                 end
+                #改名前让listener忽略该文件
+                listener.ignore! [Regexp.new(f["key"]), Regexp.new(remote_files[etag]["key"])]
                 mv(f["key"], remote_files[etag]["key"])
+                sleep 1
+                listener.ignore! nil
+                puts "#{f["key"]} rename to #{remote_files[etag]["key"]}"
             end
         end
     end
