@@ -143,7 +143,7 @@ loop {
                 end
                 #改名前让listener忽略该文件
                 listener.ignore! [Regexp.new(Regexp.escape(f["key"])),
-                Regexp.new(Regexpe.escape(remote_files[etag]["key"]))]
+                Regexp.new(Regexp.escape(remote_files[etag]["key"]))]
                 mv(f["key"], remote_files[etag]["key"])
                 sleep 1
                 listener.ignore! nil
