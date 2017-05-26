@@ -146,9 +146,9 @@ loop {
         if f["key"].index("/")
           #需要创建目录
           dirpath = f["key"][0..f["key"].rindex("/")]
-          puts "need create a directory=>#{dirpath}!"
           unless File.directory? dirpath
               mkdir_p dirpath
+              puts "need create a directory=>#{dirpath}!"
           end
         end
         #下载之前让listener忽略该文件以免被捕获导致重新上传
