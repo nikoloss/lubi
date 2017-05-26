@@ -79,7 +79,7 @@ module Lubi
         domain = resp[0]["domain"]
         primitive_url = "http://" << domain << "/"<< keyName
         download_url = Qiniu::Auth.authorize_download_url(primitive_url)
-        system("wget", "-O", localFilePath, download_url)
+        system("wget", "-qO", localFilePath, download_url)
       end
 
       def netRm(keyName, bucketName)

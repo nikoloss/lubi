@@ -22,14 +22,14 @@ $using_files = {}
 
 def inusing(files, &p)
   begin
-    beforeUploaded files
+    lock_inuse files
     p.call
   ensure
-    afterUploaded files
+    unlock_inuse files
   end
 end
 
-def beforeUploaded(files)
+def lock_inuse(files)
   #文件打标！防止对同一文件进行多种操作
   files.each do |file|
     etag = Lubi::Facilities::LubiFile.qetag file
@@ -37,7 +37,7 @@ def beforeUploaded(files)
   end
 end
 
-def afterUploaded(files)
+def unlock_inuse(files)
   #去掉标记！
   files.each do |file|
     etag = Lubi::Facilities::LubiFile.qetag file
