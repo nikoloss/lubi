@@ -3,7 +3,6 @@ require 'qiniu'
 require 'digest'
 require 'base64'
 require 'find'
-require 'socket'
 
 BLOCK_SIZE = 2 ** 22
 
