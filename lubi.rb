@@ -166,10 +166,10 @@ loop {
       unless $using_files[etag]
         unless remote_files[etag]
           listener.ignore! Regexp.new(Regexp.escape(f["key"]))
-          puts "#{f["key"]} needs to be deleted!"
+          rm f["key"]
+          puts "#{f["key"]} deleted!"
           sleep 1
           listener.ignore! nil
-          rm f["key"]
         else
           unless f["key"] == remote_files[etag]["key"]
             #进入改名步骤
