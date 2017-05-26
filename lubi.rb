@@ -1,5 +1,6 @@
 # coding: utf-8
 require 'listen'
+require 'socket'
 require 'fileutils'
 require './base/config'
 require './base/facilities'
@@ -20,26 +21,26 @@ conn.establish(ak:Lubi::Config.ak,sk:Lubi::Config.sk)
 
 $using_files = {}
 
+def netOk?
+  begin
+    true if TCPSocket.gethostbyname "baidu.com"
+  rescue
+    false
+  end
+end
+
 def inusing(files, &p)
   begin
-    lock_inuse files
+    #文件打标！防止对同一文件进行多种操作
+    files.each do |f|
+      key = f.sub(pwd, "")[1..-1]
+      $using_files[key] = "using"
+    end
     p.call
   ensure
-    unlock_inuse files
+    #去掉标记！
+    $using_files = {}
   end
-end
-
-def lock_inuse(files)
-  #文件打标！防止对同一文件进行多种操作
-  files.each do |f|
-    key = f.sub(pwd, "")[1..-1]
-    $using_files[key] = "using"
-  end
-end
-
-def unlock_inuse(files)
-  #去掉标记！
-  $using_files = {}
 end
 
 listener = Listen.to(".") do |m, a, r|
@@ -58,7 +59,7 @@ listener = Listen.to(".") do |m, a, r|
         rescue Lubi::Facilities::QiniuErr => qe
           puts qe
           sleep 5
-          retry
+          retry unless netOk?
         end
 
         #上传本地新文件
@@ -68,7 +69,7 @@ listener = Listen.to(".") do |m, a, r|
         rescue Lubi::Facilities::QiniuErr => qe
           puts qe
           sleep 5
-          retry
+          retry unless netOk?
         end
         puts "#{key} modified!"
       end
@@ -87,7 +88,7 @@ listener = Listen.to(".") do |m, a, r|
         rescue Lubi::Facilities::QiniuErr => qe
           puts qe
           sleep 5
-          retry
+          retry unless netOk?
         end
       end
     end
@@ -104,7 +105,7 @@ listener = Listen.to(".") do |m, a, r|
         rescue Lubi::Facilities::QiniuErr => qe
           puts qe
           sleep 5
-          retry
+          retry unless netOk?
         end
         puts "#{key} added!"
       end
@@ -123,7 +124,7 @@ listener = Listen.to(".") do |m, a, r|
         rescue Lubi::Facilities::QiniuErr => qe
           puts qe
           sleep 5
-          retry
+          retry unless netOk?
         end
         puts "#{oldName} rename to #{newName}"
       end
@@ -134,6 +135,7 @@ listener.start
 loop {
   begin
     sleep 10 #轮询时间
+    next unless netOk?
     #由于我们已经cd到同步盘目录下了，所以直接列举当前目录"."就可以了
     local_files = Lubi::Facilities::LubiFile.list "."
     remote_files = conn.netList Lubi::Config.bucket
