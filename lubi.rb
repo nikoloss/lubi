@@ -31,24 +31,21 @@ end
 
 def lock_inuse(files)
   #文件打标！防止对同一文件进行多种操作
-  files.each do |file|
-    etag = Lubi::Facilities::LubiFile.qetag file
-    $using_files[etag] = "using"
+  files.each do |f|
+    key = f.sub(pwd, "")[1..-1]
+    $using_files[key] = "using"
   end
 end
 
 def unlock_inuse(files)
   #去掉标记！
-  files.each do |file|
-    etag = Lubi::Facilities::LubiFile.qetag file
-    $using_files.delete(etag) if $using_files[etag]
-  end
+  $using_files = {}
 end
 
 listener = Listen.to(".") do |m, a, r|
   #修改文件对应的操作是服务端删除文件再上传
   unless m.empty?
-    inusing m do 
+    inusing m do
       m.each do |f|
         #绝对路径，需要去掉当前路径（同步盘路径）
         #比如f为 /home/rowland/qiniu/doc/ok.txt
@@ -81,15 +78,17 @@ listener = Listen.to(".") do |m, a, r|
   #但是判断删除文件的时候需要同时
   #判断remove队列存在，add队列不存在
   if !r.empty? && a.empty?
-    r.each do |f|
-      key = f.sub(pwd, "")[1..-1]
-      begin
-        conn.netRm(key, Lubi::Config.bucket)
-        puts "#{key} deleted!"
-      rescue Lubi::Facilities::QiniuErr => qe
-        puts qe
-        sleep 5
-        retry
+    inusing r do
+      r.each do |f|
+        key = f.sub(pwd, "")[1..-1]
+        begin
+          conn.netRm(key, Lubi::Config.bucket)
+          puts "#{key} deleted!"
+        rescue Lubi::Facilities::QiniuErr => qe
+          puts qe
+          sleep 5
+          retry
+        end
       end
     end
   end
@@ -142,28 +141,31 @@ loop {
     #puts "remote_files=>#{remote_files}"
     #实现步骤4
     remote_files.each_pair do |etag, f|
-      unless local_files[etag]
-        if f["key"].index("/")
-          #需要创建目录
-          dirpath = f["key"][0..f["key"].rindex("/")]
-          unless File.directory? dirpath
+      unless $using_files[f["key"]]
+        unless local_files[etag]
+          if f["key"].index("/")
+            #需要创建目录
+            dirpath = f["key"][0..f["key"].rindex("/")]
+            unless File.directory? dirpath
               mkdir_p dirpath
               puts "need create a directory=>#{dirpath}!"
+            end
           end
+          #下载之前让listener忽略该文件以免被捕获导致重新上传
+          listener.ignore! Regexp.new(Regexp.escape(f["key"]))
+          conn.download(f["key"], f["key"], Lubi::Config.bucket)
+          sleep 1
+          listener.ignore! nil
+          puts "#{f["key"]} downloaded!!!"
         end
-        #下载之前让listener忽略该文件以免被捕获导致重新上传
-        listener.ignore! Regexp.new(Regexp.escape(f["key"]))
-        conn.download(f["key"], f["key"], Lubi::Config.bucket)
-        sleep 1
-        listener.ignore! nil
-        puts "#{f["key"]} downloaded!!!"
       end
     end
     #实现步骤5
-    #由于步骤4下载了新文件，所以local_files需要更新一次以捕获刚刚下载的文件
+    #由于可能下载了新文件，所以需要更新一次以捕获刚刚下载的文件
+    remote_files = conn.netList Lubi::Config.bucket
     local_files = Lubi::Facilities::LubiFile.list "."
     local_files.each_pair do |etag, f|
-      unless $using_files[etag]
+      unless $using_files[f["key"]]
         unless remote_files[etag]
           listener.ignore! Regexp.new(Regexp.escape(f["key"]))
           rm f["key"]
