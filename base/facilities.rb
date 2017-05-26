@@ -3,6 +3,7 @@ require 'qiniu'
 require 'digest'
 require 'base64'
 require 'find'
+require 'socket'
 
 BLOCK_SIZE = 2 ** 22
 
@@ -71,7 +72,7 @@ module Lubi
           keyName,
           nil,
           bucket: bucketName)
-        raise QiniuErr, "qiniu:upload[#{localFilePath}] error!" unless code == 200
+        raise QiniuErr, "qiniu:upload[#{localFilePath}] error!" if code != 200
       end
 
       def download(localFilePath, keyName, bucketName)
@@ -95,7 +96,7 @@ module Lubi
         code, resp, headers, has_more, list_policy = nil, nil, nil, true, Qiniu::Storage::ListPolicy.new(bucketName)
         while has_more do
           code, resp, headers, has_more, list_policy = Qiniu::Storage.list(list_policy)
-          raise QiniuErr, "qiniu list error!" unless code == 200
+          raise QiniuErr, "qiniu list error!" if code != 200
           items += resp["items"] if resp.has_key? "items"
         end
         itemsHash = {}
