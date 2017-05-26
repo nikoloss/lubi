@@ -14,38 +14,41 @@ module Lubi
       end
     end
 
-    class LubiFile
-        class << self
-            def qetag(file_name)
-                sha1 = []
-                open(file_name, "rb") do |f|
-                    until f.eof?
-                      chunk = f.read(BLOCK_SIZE)
-                      sha1 << Digest::SHA1.digest(chunk)
-                    end
-                end
-                if sha1.size == 1
-                    Base64.urlsafe_encode64(0x16.chr + sha1[0])
-                else
-                    Base64.urlsafe_encode64(0x96.chr + Digest::SHA1.digest(sha1.join))
-                end
-            end
+    class QiniuErr < Exception
+    end
 
-            def list(dir)
-                localHash = {}
-                Find.find(dir) do |f|
-                    if File.file? f
-                        localFile = {}
-                        localFile["name"] = f
-                        f.start_with? "./" ? localFile["key"] = f[2..-1]
-                        : localFile["key"] = f
-                        localFile["hash"] = Lubi::Facilities::LubiFile.qetag(File.absolute_path(f))
-                        localHash[localFile["hash"]] = localFile
-                    end
-                end
-                localHash
+    class LubiFile
+      class << self
+        def qetag(file_name)
+          sha1 = []
+          open(file_name, "rb") do |f|
+            until f.eof?
+              chunk = f.read(BLOCK_SIZE)
+              sha1 << Digest::SHA1.digest(chunk)
             end
+          end
+          if sha1.size == 1
+            Base64.urlsafe_encode64(0x16.chr + sha1[0])
+          else
+            Base64.urlsafe_encode64(0x96.chr + Digest::SHA1.digest(sha1.join))
+          end
         end
+
+        def list(dir)
+          localHash = {}
+          Find.find(dir) do |f|
+            if File.file? f
+              localFile = {}
+              localFile["name"] = f
+              f.start_with? "./" ? localFile["key"] = f[2..-1]
+              : localFile["key"] = f
+              localFile["hash"] = Lubi::Facilities::LubiFile.qetag(File.absolute_path(f))
+              localHash[localFile["hash"]] = localFile
+            end
+          end
+          localHash
+        end
+      end
     end
 
     class Connection
@@ -68,6 +71,7 @@ module Lubi
           keyName,
           nil,
           bucket: bucketName)
+        raise QiniuErr, "qiniu upload error!" unless code == 200
       end
 
       def download(localFilePath, keyName, bucketName)
@@ -79,11 +83,11 @@ module Lubi
       end
 
       def netRm(keyName, bucketName)
-        Qiniu::delete(bucketName, keyName)
+        raise QiniuErr, "qiniu remove error!" unless Qiniu::delete(bucketName, keyName)
       end
 
       def netRename(oldKeyName, newKeyName, bucketName)
-        Qiniu::move(bucketName, oldKeyName, bucketName, newKeyName)
+        raise QiniuErr, "qiniu rename error!" unless Qiniu::move(bucketName, oldKeyName, bucketName, newKeyName)
       end
 
       def netList(bucketName)
@@ -91,15 +95,16 @@ module Lubi
         code, resp, headers, has_more, list_policy = nil, nil, nil, true, Qiniu::Storage::ListPolicy.new(bucketName)
         while has_more do
           code, resp, headers, has_more, list_policy = Qiniu::Storage.list(list_policy)
+          raise QiniuErr, "qiniu list error!" unless code == 200
           items += resp["items"] if resp.has_key? "items"
         end
         itemsHash = {}
         items.each do |item|
-            itemsHash[item["hash"]] = item
+          itemsHash[item["hash"]] = item
         end
         itemsHash
       end
-
     end
+
   end
 end
