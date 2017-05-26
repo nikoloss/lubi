@@ -71,7 +71,7 @@ module Lubi
           keyName,
           nil,
           bucket: bucketName)
-        raise QiniuErr, "qiniu upload error!" unless code == 200
+        raise QiniuErr, "qiniu:upload[#{localFilePath}] error!" unless code == 200
       end
 
       def download(localFilePath, keyName, bucketName)
@@ -83,11 +83,11 @@ module Lubi
       end
 
       def netRm(keyName, bucketName)
-        raise QiniuErr, "qiniu remove error!" unless Qiniu::delete(bucketName, keyName)
+        raise QiniuErr, "qiniu:remove [#{keyName}] error!" unless Qiniu::delete(bucketName, keyName)
       end
 
       def netRename(oldKeyName, newKeyName, bucketName)
-        raise QiniuErr, "qiniu rename error!" unless Qiniu::move(bucketName, oldKeyName, bucketName, newKeyName)
+        raise QiniuErr, "qiniu:[#{oldKeyName}] rename [#{newKeyName}] error!" unless Qiniu::move(bucketName, oldKeyName, bucketName, newKeyName)
       end
 
       def netList(bucketName)
