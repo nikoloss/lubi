@@ -83,11 +83,13 @@ module Lubi
       end
 
       def netRm(keyName, bucketName)
-        raise QiniuErr, "qiniu:remove [#{keyName}] error!" unless Qiniu::delete(bucketName, keyName)
+        code, result, resp = Qiniu::Storage.delete(bucketName, keyName)
+        raise QiniuErr, "qiniu:remove [#{keyName}] error!" unless [612, 200].include? code
       end
 
       def netRename(oldKeyName, newKeyName, bucketName)
-        raise QiniuErr, "qiniu:[#{oldKeyName}] rename [#{newKeyName}] error!" unless Qiniu::move(bucketName, oldKeyName, bucketName, newKeyName)
+        code, result, resp = Qiniu::Storage.move(bucketName, oldKeyName, bucketName, newKeyName)
+        raise QiniuErr, "qiniu:[#{oldKeyName}] rename [#{newKeyName}] error!" unless [200, 612, 614].include? code
       end
 
       def netList(bucketName)
