@@ -1,6 +1,5 @@
 # coding: utf-8
 require 'listen'
-require 'socket'
 require 'fileutils'
 require './base/config'
 require './base/facilities'
