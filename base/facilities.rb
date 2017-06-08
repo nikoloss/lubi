@@ -97,7 +97,7 @@ module Lubi
         code, resp, headers, has_more, list_policy = nil, nil, nil, true, Qiniu::Storage::ListPolicy.new(bucketName)
         while has_more do
           code, resp, headers, has_more, list_policy = Qiniu::Storage.list(list_policy)
-          raise QiniuErr, "qiniu list error!" if code != 200
+          raise QiniuErr, "qiniu list error!" unless (code == 200 && resp.is_a?(Hash))
           items += resp["items"] if resp.has_key? "items"
         end
         itemsHash = {}
