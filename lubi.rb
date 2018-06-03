@@ -21,7 +21,9 @@ cd Lubi::Config.dir
 conn = Lubi::Facilities::Connection.new
 conn.establish(ak:Lubi::Config.ak,sk:Lubi::Config.sk)
 $mutex = Mutex.new
-$operating = false
+$op = false
+$need_ignore = Set.new
+
 
 def ignore_hidden_file(files, &p)
   files.each do |file|
@@ -48,6 +50,9 @@ listener = Listen.to(".") do |m, a, r|
       #则去掉同步盘路径之后得到 /doc/ok.txt
       #此时还需额外去掉开头那个"/"
       key = f.sub(pwd, "")[1..-1]
+      if $need_ignore.include? key
+        next
+      end
       #删除服务器文件
       begin
         conn.netRm(key, Lubi::Config.bucket)
@@ -77,6 +82,9 @@ listener = Listen.to(".") do |m, a, r|
     $mutex.lock
     ignore_hidden_file r do |f|
       key = f.sub(pwd, "")[1..-1]
+      if $need_ignore.include? key
+        next
+      end
       begin
         conn.netRm(key, Lubi::Config.bucket)
         puts "#{key} deleted!"
@@ -94,6 +102,9 @@ listener = Listen.to(".") do |m, a, r|
     $mutex.lock
     ignore_hidden_file a do |f|
       key = f.sub(pwd, "")[1..-1]
+      if $need_ignore.include? key
+        next
+      end
       etag = Lubi::Facilities::LubiFile.qetag(f)
       begin
         conn.upload(f, key, Lubi::Config.bucket)
@@ -114,6 +125,9 @@ listener = Listen.to(".") do |m, a, r|
     r.zip(a) do |oldName, newName|
       oldKey = oldName.sub(pwd, "")[1..-1]
       newKey = newName.sub(pwd, "")[1..-1]
+      if $need_ignore.include?(oldKey) || $need_ignore.include?(newKey)
+        next
+      end
       begin
         if hidden?(oldKey) && hidden?(newKey)
           puts "ignore renaming #{oldKey} to #{newKey}"
@@ -143,14 +157,19 @@ listener.start
 loop do
   begin
     $mutex.lock
+    if $op
+      $mutex.unlock
+      sleep 1
+      next
+    end
     #由于我们已经cd到同步盘目录下了，所以直接列举当前目录"."就可以了
     local_files = Lubi::Facilities::LubiFile.list "."
     remote_files = conn.netList Lubi::Config.bucket
+    $need_ignore = []
+    need_down = []
     #实现步骤4
     remote_files.each_pair do |etag, f|
       if $op
-        $mutex.unlock if $mutex.locked?
-        sleep 1
         break
       end
       unless local_files[etag]
@@ -163,37 +182,48 @@ loop do
           end
         end
         #下载之前让listener忽略该文件以免被捕获导致重新上传
-        listener.ignore! Regexp.new(Regexp.escape(f["key"]))
-        conn.download(f["key"], f["key"], Lubi::Config.bucket)
-        sleep 1
-        listener.ignore! nil
-        puts "#{f["key"]} downloaded!!!"
+        #添加到下载队列中
+        need_down << f["key"]
+        $need_ignore << f["key"]
+        #sleep 1
+        #conn.download(f["key"], f["key"], Lubi::Config.bucket)
+        #listener.ignore! nil
+        #puts "#{f["key"]} downloaded!!!"
       end
     end
+    $mutex.unlock
+    sleep 1
+    #下载
+    $mutex.lock
     if $op
-      $mutex.unlock if $mutex.locked?
+      $mutex.unlock
       sleep 1
       next
     end
+    need_down.each do |file|
+      conn.download(file, file, Lubi::Config.bucket)
+      puts "[loop]#{file} download."
+    end
+    $mutex.unlock
+    sleep 1
     #实现步骤5
     #由于可能下载了新文件，所以需要更新一次以捕获刚刚下载的文件
+    $mutex.lock
     remote_files = conn.netList Lubi::Config.bucket
     local_files = Lubi::Facilities::LubiFile.list "."
+    need_remove = []
+    need_rename = []
     local_files.each_pair do |etag, f|
-      if $op
-        $mutex.unlock if $mutex.locked?
-        sleep 1
-        break
-      end
       if f and hidden?f["key"]
         next
       end
       unless remote_files[etag]
-        listener.ignore! Regexp.new(Regexp.escape(f["key"]))
-        rm f["key"]
-        puts "#{f['key']} removed..."
-        sleep 1
-        listener.ignore! nil
+        #listener.ignore! Regexp.new("./"+f["name"])
+        #rm f["key"]
+        #puts "#{f['key']} removed..."
+      #listener.ignore! nil
+        need_remove << f["key"]
+        $need_ignore << f["key"]
       else
         unless f["key"] == remote_files[etag]["key"]
           #进入改名步骤
@@ -206,19 +236,39 @@ loop do
             end
           end
           #改名前让listener忽略该文件
-          listener.ignore! [Regexp.new(Regexp.escape(f["key"])),
-                            Regexp.new(Regexp.escape(remote_files[etag]["key"]))]
-          mv(f["key"], remote_files[etag]["key"])
-          sleep 1
-          listener.ignore! nil
-          puts "#{f["key"]} rename to #{remote_files[etag]["key"]}"
+          #listener.ignore! [/f["key"]/,/remote_files[etag]["key"]/]
+          #sleep 1
+          #mv(f["key"], remote_files[etag]["key"])
+          #listener.ignore! nil
+          #puts "#{f["key"]} rename to #{remote_files[etag]["key"]}"
+          need_rename << [f["key"], remote_files[etag]["key"]]
+          need_ignore << Regexp.new("./"+f["key"])
+          need_ignore << Regexp.new("./"+remote_files[etag]["key"])
         end
       end
     end
-    $mutex.unlock if $mutex.locked?
-    sleep 5 #轮询时间
+    $mutex.unlock
+    sleep 1
+    $mutex.lock
+    if $op
+      $mutex.unlock
+      sleep 1
+      next
+    end
+    need_remove.each do |file|
+      rm file
+      puts "[loop] #{file} removed!"
+    end
+    need_rename.each do |oldFile, newFile|
+      mv(oldFile, newFile)
+      puts "[loop] #{oldFile} renamed to #{newFile}"
+    end
+    $mutex.unlock
+    sleep 1 #轮询时间
   rescue Lubi::Facilities::QiniuErr => qe
-    $mutex.unlock if $mutex.locked?
+    if $mutex.locked?
+      $mutex.unlock
+    end
     puts qe
     next
   end

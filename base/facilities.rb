@@ -37,7 +37,7 @@ module Lubi
         def list(dir)
           localHash = {}
           Find.find(dir) do |f|
-            if File.file? f
+            if f && File.file?(f)
               localFile = {}
               localFile["name"] = f
               if f.start_with? "./"
