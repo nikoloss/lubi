@@ -217,11 +217,7 @@ loop do
       if f and hidden?f["key"]
         next
       end
-      unless remote_files[etag]
-        #listener.ignore! Regexp.new("./"+f["name"])
-        #rm f["key"]
-        #puts "#{f['key']} removed..."
-      #listener.ignore! nil
+      if not remote_files[etag]
         need_remove << f["key"]
         $need_ignore << f["key"]
       else
@@ -236,14 +232,9 @@ loop do
             end
           end
           #改名前让listener忽略该文件
-          #listener.ignore! [/f["key"]/,/remote_files[etag]["key"]/]
-          #sleep 1
-          #mv(f["key"], remote_files[etag]["key"])
-          #listener.ignore! nil
-          #puts "#{f["key"]} rename to #{remote_files[etag]["key"]}"
           need_rename << [f["key"], remote_files[etag]["key"]]
-          need_ignore << Regexp.new("./"+f["key"])
-          need_ignore << Regexp.new("./"+remote_files[etag]["key"])
+          $need_ignore << f["key"]
+          $need_ignore << remote_files[etag]["key"]
         end
       end
     end
