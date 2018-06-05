@@ -15,6 +15,10 @@ unless File.exists? Lubi::Config.dir
   #如果不存在同步盘目录则创建
   mkdir_p Lubi::Config.dir
 end
+unless File.exist? Lubi::Config.logDir
+  #如果不存在日志目录则创建
+  mkdir_p Lubi::Config.logDir
+end
 #切换到同步盘目录
 cd Lubi::Config.dir
 
@@ -23,12 +27,12 @@ conn.establish(ak:Lubi::Config.ak,sk:Lubi::Config.sk)
 $mutex = Mutex.new
 $op = false
 $need_ignore = Set.new
-
+logger = Logger.new(File::join(Lubi::Config.logDir, 'lubi.log'), 'weekly')
 
 def ignore_hidden_file(files, &p)
   files.each do |file|
     if hidden? file
-      puts "captured #{file} but will ignore"
+      logger.info "captured #{file} but will ignore"
     else
       p.call(file)
     end
@@ -57,7 +61,7 @@ listener = Listen.to(".") do |m, a, r|
       begin
         conn.netRm(key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
-        puts qe
+        logger.error qe
         sleep 1
         retry
       end
@@ -67,11 +71,11 @@ listener = Listen.to(".") do |m, a, r|
       begin
         conn.upload(f, key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
-        puts qe
+        logger.error qe
         sleep 1
         retry
       end
-      puts "#{key} modified!"
+      logger.info "#{key} modified!"
     end
     $mutex.unlock
   end
@@ -87,9 +91,9 @@ listener = Listen.to(".") do |m, a, r|
       end
       begin
         conn.netRm(key, Lubi::Config.bucket)
-        puts "#{key} deleted!"
+        logger.info "#{key} deleted!"
       rescue Lubi::Facilities::QiniuErr => qe
-        puts qe
+        logger.error qe
         sleep 1
         retry
       end
@@ -109,11 +113,11 @@ listener = Listen.to(".") do |m, a, r|
       begin
         conn.upload(f, key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
-        puts qe
+        logger.error qe
         sleep 1
         retry
       end
-      puts "#{key} added!"
+      logger.info "#{key} added!"
     end
     $mutex.unlock
   end
@@ -130,21 +134,21 @@ listener = Listen.to(".") do |m, a, r|
       end
       begin
         if hidden?(oldKey) && hidden?(newKey)
-          puts "ignore renaming #{oldKey} to #{newKey}"
+          logger.info "ignore renaming #{oldKey} to #{newKey}"
         elsif hidden?(oldKey) && !hidden?(newKey)
           #把一个隐藏文件改成普通文件，需要上传
           conn.upload(newName, newKey, Lubi::Config.bucket)
-          puts "need add #{newKey}"
+          logger.info "need add #{newKey}"
         elsif !hidden?(oldKey) && hidden?(newKey)
           #把一个普通文件改成隐藏文件，需要远程删除
           conn.netRm(oldKey, Lubi::Config.bucket)
-          puts "need rm #{oldKey}"
+          logger.info "need rm #{oldKey}"
         else
           conn.netRename(oldKey, newKey, Lubi::Config.bucket)
-          puts "#{oldName} rename to #{newName}"
+          logger.info "#{oldName} rename to #{newName}"
         end
       rescue Lubi::Facilities::QiniuErr => qe
-        puts qe
+        logger.error qe
         sleep 1
         retry
       end
@@ -178,17 +182,13 @@ loop do
           dirpath = f["key"][0..f["key"].rindex("/")]
           unless File.directory? dirpath
             mkdir_p dirpath
-            puts "need create a directory=>#{dirpath}!"
+            logger.info "need create a directory=>#{dirpath}!"
           end
         end
         #下载之前让listener忽略该文件以免被捕获导致重新上传
         #添加到下载队列中
         need_down << f["key"]
         $need_ignore << f["key"]
-        #sleep 1
-        #conn.download(f["key"], f["key"], Lubi::Config.bucket)
-        #listener.ignore! nil
-        #puts "#{f["key"]} downloaded!!!"
       end
     end
     $mutex.unlock
@@ -202,7 +202,7 @@ loop do
     end
     need_down.each do |file|
       conn.download(file, file, Lubi::Config.bucket)
-      puts "[loop]#{file} download."
+      logger.info "[loop]#{file} download."
     end
     $mutex.unlock
     sleep 1
@@ -227,7 +227,7 @@ loop do
             #需要创建目录
             dirpath = remote_files[etag]["key"][0..remote_files[etag]["key"].rindex("/")]
             unless File.directory? dirpath
-              puts "need create a directory=>#{dirpath}!"
+              logger.info "need create a directory=>#{dirpath}!"
               mkdir_p dirpath
             end
           end
@@ -248,11 +248,11 @@ loop do
     end
     need_remove.each do |file|
       rm file
-      puts "[loop] #{file} removed!"
+      logger.info "[loop] #{file} removed!"
     end
     need_rename.each do |oldFile, newFile|
       mv(oldFile, newFile)
-      puts "[loop] #{oldFile} renamed to #{newFile}"
+      logger.info "[loop] #{oldFile} renamed to #{newFile}"
     end
     $mutex.unlock
     sleep 1 #轮询时间
@@ -260,7 +260,7 @@ loop do
     if $mutex.locked?
       $mutex.unlock
     end
-    puts qe
+    logger.error qe
     next
   end
 end
