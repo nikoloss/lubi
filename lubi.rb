@@ -28,6 +28,7 @@ $mutex = Mutex.new
 $op = false
 $need_ignore = Set.new
 logger = Logger.new(File::join(Lubi::Config.logDir, 'lubi.log'), 'weekly')
+logger.level = Logger::INFO
 
 def ignore_hidden_file(files, &p)
   files.each do |file|
