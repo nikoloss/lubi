@@ -86,7 +86,11 @@ module Lubi
       end
 
       def netRm(keyName, bucketName)
-        code, result, resp = Qiniu::Storage.delete(bucketName, keyName)
+        code = 0
+        3.times do
+          code, result, resp = Qiniu::Storage.delete(bucketName, keyName)
+          break if [200].include? code
+        end
         raise QiniuErr, "qiniu:remove [#{keyName}] error!" unless [612, 200].include? code
       end
 

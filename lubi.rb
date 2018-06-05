@@ -1,7 +1,6 @@
 # coding: utf-8
 require 'listen'
 require 'fileutils'
-require 'thread'
 require 'set'
 require './base/config'
 require './base/facilities'
@@ -24,8 +23,7 @@ cd Lubi::Config.dir
 
 conn = Lubi::Facilities::Connection.new
 conn.establish(ak:Lubi::Config.ak,sk:Lubi::Config.sk)
-$mutex = Mutex.new
-$op = false
+
 $need_ignore = Set.new
 logger = Logger.new(File::join(Lubi::Config.logDir, 'lubi.log'), 'weekly')
 logger.level = Logger::INFO
@@ -45,10 +43,8 @@ def hidden?(file)
 end
 
 listener = Listen.to(".") do |m, a, r|
-  $op = true
   #修改文件对应的操作是服务端删除文件再上传
   unless m.empty?
-    $mutex.lock
     ignore_hidden_file m do |f|
       #绝对路径，需要去掉当前路径（同步盘路径）
       #比如f为 /home/rowland/qiniu/doc/ok.txt
@@ -78,13 +74,11 @@ listener = Listen.to(".") do |m, a, r|
       end
       logger.info "#{key} modified!"
     end
-    $mutex.unlock
   end
   #删除文件对应服务器删除
   #但是判断删除文件的时候需要同时
   #判断remove队列存在，add队列不存在
   if !r.empty? && a.empty?
-    $mutex.lock
     ignore_hidden_file r do |f|
       key = f.sub(pwd, "")[1..-1]
       if $need_ignore.include? key
@@ -99,12 +93,10 @@ listener = Listen.to(".") do |m, a, r|
         retry
       end
     end
-    $mutex.unlock
   end
   #新增文件的操作对应服务端直接上传
   #但是判断新增文件的时候需要判断remove是空
   if r.empty? && !a.empty?
-    $mutex.lock
     ignore_hidden_file a do |f|
       key = f.sub(pwd, "")[1..-1]
       if $need_ignore.include? key
@@ -120,13 +112,12 @@ listener = Listen.to(".") do |m, a, r|
       end
       logger.info "#{key} added!"
     end
-    $mutex.unlock
   end
   #重命名文件的操作，对应服务端改名
   #但是重命名操作的判断需要同时判断
   #add和remove队列不为空
   if !a.empty? && !r.empty?
-    $mutex.lock
+    next unless a.length == r.length
     r.zip(a) do |oldName, newName|
       oldKey = oldName.sub(pwd, "")[1..-1]
       newKey = newName.sub(pwd, "")[1..-1]
@@ -154,19 +145,16 @@ listener = Listen.to(".") do |m, a, r|
         retry
       end
     end
-    $mutex.unlock
   end
-  $op = false
 end
 listener.start
+
+$need_down_snapshot = []
+$need_remove_snapshot = []
+$need_rename_snapshot = []
+
 loop do
   begin
-    $mutex.lock
-    if $op
-      $mutex.unlock
-      sleep 1
-      next
-    end
     #由于我们已经cd到同步盘目录下了，所以直接列举当前目录"."就可以了
     local_files = Lubi::Facilities::LubiFile.list "."
     remote_files = conn.netList Lubi::Config.bucket
@@ -174,9 +162,6 @@ loop do
     need_down = []
     #实现步骤4
     remote_files.each_pair do |etag, f|
-      if $op
-        break
-      end
       unless local_files[etag]
         if f["key"].index("/")
           #需要创建目录
@@ -192,24 +177,13 @@ loop do
         $need_ignore << f["key"]
       end
     end
-    $mutex.unlock
-    sleep 1
-    #下载
-    $mutex.lock
-    if $op
-      $mutex.unlock
-      sleep 1
-      next
-    end
     need_down.each do |file|
       conn.download(file, file, Lubi::Config.bucket)
       logger.info "[loop]#{file} download."
-    end
-    $mutex.unlock
-    sleep 1
+    end if $need_down_snapshot==need_down
+    $need_down_snapshot = need_down
     #实现步骤5
     #由于可能下载了新文件，所以需要重新获取远程文件列表以捕获刚刚下载的文件
-    $mutex.lock
     remote_files = conn.netList Lubi::Config.bucket
     local_files = Lubi::Facilities::LubiFile.list "."
     need_remove = []
@@ -239,28 +213,18 @@ loop do
         end
       end
     end
-    $mutex.unlock
-    sleep 1
-    $mutex.lock
-    if $op
-      $mutex.unlock
-      sleep 1
-      next
-    end
     need_remove.each do |file|
       rm file
       logger.info "[loop] #{file} removed!"
-    end
+    end if $need_remove_snapshot == need_remove
+    $need_remove_snapshot = need_remove
     need_rename.each do |oldFile, newFile|
       mv(oldFile, newFile)
       logger.info "[loop] #{oldFile} renamed to #{newFile}"
-    end
-    $mutex.unlock
-    sleep 3 #轮询时间
+    end if $need_rename_snapshot == need_rename
+    $need_rename_snapshot = need_rename
+    sleep 5 #轮询时间
   rescue Lubi::Facilities::QiniuErr => qe
-    if $mutex.locked?
-      $mutex.unlock
-    end
     logger.error qe
     next
   end
