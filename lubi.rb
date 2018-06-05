@@ -208,7 +208,7 @@ loop do
     $mutex.unlock
     sleep 1
     #实现步骤5
-    #由于可能下载了新文件，所以需要更新一次以捕获刚刚下载的文件
+    #由于可能下载了新文件，所以需要重新获取远程文件列表以捕获刚刚下载的文件
     $mutex.lock
     remote_files = conn.netList Lubi::Config.bucket
     local_files = Lubi::Facilities::LubiFile.list "."
@@ -256,7 +256,7 @@ loop do
       logger.info "[loop] #{oldFile} renamed to #{newFile}"
     end
     $mutex.unlock
-    sleep 1 #轮询时间
+    sleep 3 #轮询时间
   rescue Lubi::Facilities::QiniuErr => qe
     if $mutex.locked?
       $mutex.unlock
