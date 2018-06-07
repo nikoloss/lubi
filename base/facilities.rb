@@ -3,6 +3,7 @@ require 'qiniu'
 require 'digest'
 require 'base64'
 require 'find'
+require 'open-uri'
 
 BLOCK_SIZE = 2 ** 22
 
@@ -82,7 +83,8 @@ module Lubi
         domain = resp[0]["domain"]
         primitive_url = "http://" << domain << "/"<< keyName
         download_url = Qiniu::Auth.authorize_download_url(primitive_url)
-        system("wget", "-qO", localFilePath, download_url)
+        IO.copy_stream(open(download_url), localFilePath)
+        # system("wget", "-qO", localFilePath, download_url)
       end
 
       def netRm(keyName, bucketName)
