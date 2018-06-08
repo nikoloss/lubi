@@ -93,7 +93,7 @@ module Lubi
           code, result, resp = Qiniu::Storage.delete(bucketName, keyName)
           break if [200].include? code
         end
-        raise QiniuErr, "qiniu:remove [#{keyName}] error!" unless [612, 200].include? code
+        raise QiniuErr, "qiniu:remove [#{keyName}] error!" unless 200 == code
       end
 
       def netRename(oldKeyName, newKeyName, bucketName)
