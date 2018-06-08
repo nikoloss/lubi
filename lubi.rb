@@ -183,9 +183,6 @@ loop do
     end if $need_down_snapshot==need_down
     $need_down_snapshot = need_down
     #实现步骤5
-    #由于可能下载了新文件，所以需要重新获取远程文件列表以捕获刚刚下载的文件
-    remote_files = conn.netList Lubi::Config.bucket
-    local_files = Lubi::Facilities::LubiFile.list "."
     need_remove = []
     need_rename = []
     local_files.each_pair do |etag, f|
