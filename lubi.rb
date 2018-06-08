@@ -64,7 +64,6 @@ listener = Listen.to(".") do |m, a, r|
       end
 
       #上传本地新文件
-      etag = Lubi::Facilities::LubiFile.qetag(f)
       begin
         conn.upload(f, key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
