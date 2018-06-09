@@ -5,7 +5,6 @@ require 'set'
 require './base/config'
 require './base/facilities'
 
-
 include FileUtils
 
 #main
