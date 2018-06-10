@@ -158,6 +158,8 @@ loop do
     remote_files = conn.netList Lubi::Config.bucket
     $need_ignore = []
     need_down = []
+    need_remove = []
+    need_rename = []
     #实现步骤4
     remote_files.each_pair do |etag, f|
       unless local_files[etag]
@@ -181,8 +183,6 @@ loop do
     end if $need_down_snapshot==need_down
     $need_down_snapshot = need_down
     #实现步骤5
-    need_remove = []
-    need_rename = []
     local_files.each_pair do |etag, f|
       if f and hidden?f["key"]
         next
