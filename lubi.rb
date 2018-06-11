@@ -23,7 +23,8 @@ cd Lubi::Config.dir
 conn = Lubi::Facilities::Connection.new
 conn.establish(ak:Lubi::Config.ak,sk:Lubi::Config.sk)
 
-$need_ignore = Set.new
+$loop_using = Set.new
+$listener_using = Set.new
 logger = Logger.new(File::join(Lubi::Config.logDir, 'lubi.log'), 'weekly')
 logger.level = Logger::INFO
 
@@ -42,6 +43,10 @@ def hidden?(file)
 end
 
 listener = Listen.to(".") do |m, a, r|
+  $listener_using.clear
+  need_up = []
+  need_remove = []
+  need_rename = []
   #修改文件对应的操作是服务端删除文件再上传
   unless m.empty?
     ignore_hidden_file m do |f|
@@ -50,27 +55,15 @@ listener = Listen.to(".") do |m, a, r|
       #则去掉同步盘路径之后得到 /doc/ok.txt
       #此时还需额外去掉开头那个"/"
       key = f.sub(pwd, "")[1..-1]
-      if $need_ignore.include? key
+      if $loop_using.include? key
         next
       end
-      #删除服务器文件
-      begin
-        conn.netRm(key, Lubi::Config.bucket)
-      rescue Lubi::Facilities::QiniuErr => qe
-        logger.error qe
-        sleep 5
-        retry
-      end
-
-      #上传本地新文件
-      begin
-        conn.upload(f, key, Lubi::Config.bucket)
-      rescue Lubi::Facilities::QiniuErr => qe
-        logger.error qe
-        sleep 5
-        retry
-      end
-      logger.info "#{key} modified!"
+      $listener_using << key
+      #待删除
+      need_remove << key
+      #待上传
+      need_up << [f, key]
+      logger.info "[local]#{key} modified!"
     end
   end
   #删除文件对应服务器删除
@@ -79,17 +72,12 @@ listener = Listen.to(".") do |m, a, r|
   if !r.empty? && a.empty?
     ignore_hidden_file r do |f|
       key = f.sub(pwd, "")[1..-1]
-      if $need_ignore.include? key
+      if $loop_using.include? key
         next
       end
-      begin
-        conn.netRm(key, Lubi::Config.bucket)
-        logger.info "#{key} deleted!"
-      rescue Lubi::Facilities::QiniuErr => qe
-        logger.error qe
-        sleep 5
-        retry
-      end
+      $listener_using << key
+      need_remove << key
+      logger.info "[local]#{key} removed!"
     end
   end
   #新增文件的操作对应服务端直接上传
@@ -97,18 +85,12 @@ listener = Listen.to(".") do |m, a, r|
   if r.empty? && !a.empty?
     ignore_hidden_file a do |f|
       key = f.sub(pwd, "")[1..-1]
-      if $need_ignore.include? key
+      if $loop_using.include? key
         next
       end
-      etag = Lubi::Facilities::LubiFile.qetag(f)
-      begin
-        conn.upload(f, key, Lubi::Config.bucket)
-      rescue Lubi::Facilities::QiniuErr => qe
-        logger.error qe
-        sleep 5
-        retry
-      end
-      logger.info "#{key} added!"
+      $listener_using<<key
+      need_up << [f, key]
+      logger.info "[local]#{key} added!"
     end
   end
   #重命名文件的操作，对应服务端改名
@@ -119,31 +101,55 @@ listener = Listen.to(".") do |m, a, r|
     r.zip(a) do |oldName, newName|
       oldKey = oldName.sub(pwd, "")[1..-1]
       newKey = newName.sub(pwd, "")[1..-1]
-      if $need_ignore.include?(oldKey) || $need_ignore.include?(newKey)
+      if $loop_using.include?(oldKey) || $loop_using.include?(newKey)
         next
       end
-      begin
-        if hidden?(oldKey) && hidden?(newKey)
-          logger.info "ignore renaming #{oldKey} to #{newKey}"
-        elsif hidden?(oldKey) && !hidden?(newKey)
-          #把一个隐藏文件改成普通文件，需要上传
-          conn.upload(newName, newKey, Lubi::Config.bucket)
-          logger.info "need add #{newKey}"
-        elsif !hidden?(oldKey) && hidden?(newKey)
-          #把一个普通文件改成隐藏文件，需要远程删除
-          conn.netRm(oldKey, Lubi::Config.bucket)
-          logger.info "need rm #{oldKey}"
-        else
-          conn.netRename(oldKey, newKey, Lubi::Config.bucket)
-          logger.info "#{oldName} rename to #{newName}"
-        end
-      rescue Lubi::Facilities::QiniuErr => qe
-        logger.error qe
-        sleep 5
-        retry
+      $listener_using << newKey
+      if hidden?(oldKey) && hidden?(newKey)
+        logger.info "[local]ignore"
+      elsif hidden?(oldKey) && !hidden?(newKey)
+        #把一个隐藏文件改成普通文件，需要上传
+        need_up << [newName, newKey]
+      elsif !hidden?(oldKey) && hidden?(newKey)
+        #把一个普通文件改成隐藏文件，需要远程删除
+        need_remove << oldKey
+      else
+        need_rename << [oldKey, newKey]
       end
+      logger.info "[local]#{oldKey} renamed to #{newKey}"
     end
   end
+  need_up.each do |f,key|
+    begin
+      conn.upload(f, key, Lubi::Config.bucket)
+      logger.info "[qiniu]#{key} uploaded!"
+    rescue Lubi::Facilities::QiniuErr => qe
+      logger.error qe
+      sleep 5
+      retry
+    end
+  end
+  need_remove.each do |key|
+    begin
+      conn.netRm(key, Lubi::Config.bucket)
+      logger.info "[qiniu]#{key} removed!"
+    rescue Lubi::Facilities::QiniuErr => qe
+      logger.error qe
+      sleep 5
+      retry
+    end    
+  end
+  need_rename.each do |oldKey, newKey|
+    begin
+      conn.netRename(oldKey, newKey, Lubi::Config.bucket)
+      logger.info "[qiniu]#{oldKey} renamed to #{newKey}!"
+    rescue Lubi::Facilities::QiniuErr => qe
+      logger.error qe
+      sleep 5
+      retry
+    end
+  end
+  $listener_using.clear
 end
 listener.start
 
@@ -156,7 +162,7 @@ loop do
     #由于我们已经cd到同步盘目录下了，所以直接列举当前目录"."就可以了
     local_files = Lubi::Facilities::LubiFile.list "."
     remote_files = conn.netList Lubi::Config.bucket
-    $need_ignore = []
+    $loop_using.clear
     need_down = []
     need_remove = []
     need_rename = []
@@ -174,14 +180,9 @@ loop do
         #下载之前让listener忽略该文件以免被捕获导致重新上传
         #添加到下载队列中
         need_down << f["key"]
-        $need_ignore << f["key"]
+        $loop_using << f["key"]
       end
     end
-    need_down.each do |file|
-      conn.download(file, file, Lubi::Config.bucket)
-      logger.info "[loop]#{file} download."
-    end if $need_down_snapshot==need_down
-    $need_down_snapshot = need_down
     #实现步骤5
     local_files.each_pair do |etag, f|
       if f and hidden?f["key"]
@@ -189,7 +190,7 @@ loop do
       end
       if not remote_files[etag]
         need_remove << f["key"]
-        $need_ignore << f["key"]
+        $loop_using << f["key"]
       else
         unless f["key"] == remote_files[etag]["key"]
           #进入改名步骤
@@ -203,17 +204,25 @@ loop do
           end
           #改名前让listener忽略该文件
           need_rename << [f["key"], remote_files[etag]["key"]]
-          $need_ignore << f["key"]
-          $need_ignore << remote_files[etag]["key"]
+          $loop_using << f["key"]
+          $loop_using << remote_files[etag]["key"]
         end
       end
     end
+    need_down.each do |file|
+      next if $listener_using.include? file
+      conn.download(file, file, Lubi::Config.bucket)
+      logger.info "[loop]#{file} download."
+    end if $need_down_snapshot==need_down
+    $need_down_snapshot = need_down
     need_remove.each do |file|
+      next if $listener_using.include? file
       rm file
       logger.info "[loop] #{file} removed!"
     end if $need_remove_snapshot == need_remove
     $need_remove_snapshot = need_remove
     need_rename.each do |oldFile, newFile|
+      next if $listener_using.include?(oldFile) || $listener_using.include?(newFile)
       mv(oldFile, newFile)
       logger.info "[loop] #{oldFile} renamed to #{newFile}"
     end if $need_rename_snapshot == need_rename
