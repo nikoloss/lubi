@@ -58,7 +58,7 @@ listener = Listen.to(".") do |m, a, r|
         conn.netRm(key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
         logger.error qe
-        sleep 1
+        sleep 5
         retry
       end
 
@@ -67,7 +67,7 @@ listener = Listen.to(".") do |m, a, r|
         conn.upload(f, key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
         logger.error qe
-        sleep 1
+        sleep 5
         retry
       end
       logger.info "#{key} modified!"
@@ -87,7 +87,7 @@ listener = Listen.to(".") do |m, a, r|
         logger.info "#{key} deleted!"
       rescue Lubi::Facilities::QiniuErr => qe
         logger.error qe
-        sleep 1
+        sleep 5
         retry
       end
     end
@@ -105,7 +105,7 @@ listener = Listen.to(".") do |m, a, r|
         conn.upload(f, key, Lubi::Config.bucket)
       rescue Lubi::Facilities::QiniuErr => qe
         logger.error qe
-        sleep 1
+        sleep 5
         retry
       end
       logger.info "#{key} added!"
@@ -139,7 +139,7 @@ listener = Listen.to(".") do |m, a, r|
         end
       rescue Lubi::Facilities::QiniuErr => qe
         logger.error qe
-        sleep 1
+        sleep 5
         retry
       end
     end
