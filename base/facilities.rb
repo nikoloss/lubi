@@ -80,8 +80,9 @@ module Lubi
 
       def download(localFilePath, keyName, bucketName)
         code, resp = Qiniu::Storage.domains(bucketName)
+        raise QiniuErr, "qiniu:download #{keyName} [#{code}]" unless code==200
         domain = resp[0]["domain"]
-        primitive_url = "http://" << domain << "/"<< URI.encode_www_form_component(keyName)
+        primitive_url = "http://" << domain << "/"<< URI.encode(keyName).gsub("[","%5B").gsub("]","%5D")
         download_url = Qiniu::Auth.authorize_download_url(primitive_url)
         IO.copy_stream(open(download_url), localFilePath)
         # system("wget", "-qO", localFilePath, download_url)
