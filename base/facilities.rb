@@ -84,7 +84,11 @@ module Lubi
         domain = resp[0]["domain"]
         primitive_url = "http://" << domain << "/"<< URI.encode(keyName).gsub("[","%5B").gsub("]","%5D")
         download_url = Qiniu::Auth.authorize_download_url(primitive_url)
-        IO.copy_stream(open(download_url), localFilePath)
+        begin
+          IO.copy_stream(open(download_url), localFilePath)
+        rescue
+          raise QiniuErr, "qiniu:download #{keyName} error, uri=[#{download_url}], keyName=[#{keyName}]"
+        end
         # system("wget", "-qO", localFilePath, download_url)
       end
 
