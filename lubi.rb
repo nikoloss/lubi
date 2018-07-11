@@ -183,6 +183,7 @@ loop do
         $loop_using << f["key"]
       end
     end
+
     #实现步骤5
     local_files.each_pair do |etag, f|
       if f and hidden?f["key"]
@@ -209,6 +210,7 @@ loop do
         end
       end
     end
+
     need_down.each do |file|
       next if $listener_using.include? file
       conn.download(file, file, Lubi::Config.bucket)
