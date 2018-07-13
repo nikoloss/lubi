@@ -89,7 +89,6 @@ module Lubi
         rescue
           raise QiniuErr, "qiniu:download #{keyName} error, uri=[#{download_url}], keyName=[#{keyName}]"
         end
-        # system("wget", "-qO", localFilePath, download_url)
       end
 
       def netRm(keyName, bucketName)
