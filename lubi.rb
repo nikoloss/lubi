@@ -166,6 +166,7 @@ loop do
     need_down = []
     need_remove = []
     need_rename = []
+
     #实现步骤4
     remote_files.each_pair do |etag, f|
       unless local_files[etag]
